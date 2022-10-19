@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  sdi:
+    image: africahazardswatch/sdi:latest
+    container_name: sdi
+    build: .
+    restart: ${RESTART_POLICY}
+    command: python main.py
+    environment:
+      - STATE_DIR=/usr/src/app/state
+      - OUTPUT_DIR=/usr/src/app/data
+      - MINUTES_UPDATE_INTERVAL=${MINUTES_UPDATE_INTERVAL}
+      - EUMETSAT_CONSUMER_KEY=${EUMETSAT_CONSUMER_KEY}
+      - EUMETSAT_CONSUMER_SECRET=${EUMETSAT_CONSUMER_SECRET}
+    volumes:
+      - ${DATA_VOLUME}:/usr/src/app/data
+      - ${DATA_STATE_VOLUME}:/usr/src/app/state
