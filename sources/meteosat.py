@@ -29,29 +29,28 @@ class MeteosatSource(object):
     def __init__(self, consumer_key, consumer_secret, state_directory, output_dir):
         self.api = EumdacApi(consumer_key=consumer_key, consumer_secret=consumer_secret)
         self.state_file = None
-        self.init_state(state_directory)
+        self.state_directory = state_directory
         self.extent = [-25.3605509351584004, -34.8219979618462006, 63.4957562687202994, 37.3404070787983002]
         self.output_dir = output_dir
         self.composites = DATASET.get("composites")
 
-    def init_state(self, state_directory):
+        self.init_state()
 
-        pathlib.Path(state_directory).mkdir(parents=True, exist_ok=True)
+    def init_state(self):
+
+        pathlib.Path(self.state_directory).mkdir(parents=True, exist_ok=True)
 
         file_name = f"{self.name}.json"
 
-        state_file = os.path.join(state_directory, file_name)
+        state_file = os.path.join(self.state_directory, file_name)
 
-        pathlib.Path(state_file).touch(exist_ok=True)
+        if not os.path.exists(state_file):
+            pathlib.Path(state_file).touch(exist_ok=True)
+            # write empty dict
+            with open(state_file, 'w') as f:
+                json.dump({}, f)
 
         self.state_file = state_file
-
-        current_state = self.read_state()
-
-        if not current_state.get("date"):
-            # write empty dict
-            with open(self.state_file, 'w') as f:
-                json.dump({}, f)
 
     def read_state(self):
         try:
@@ -76,14 +75,12 @@ class MeteosatSource(object):
         date = current_state.get("date")
         collection = DATASET.get("collection")
 
-        dt = None
-
         if date:
             # increment by 15 minutes
             dt = parse_date(date) + timedelta(minutes=15)
         else:
-            this_hour = datetime.now().replace(minute=0, second=0, microsecond=0)
-            dt = this_hour
+            # get current hour
+            dt = datetime.now().replace(minute=0, second=0, microsecond=0)
 
         data_id = self.check_should_update(collection, dt)
 
