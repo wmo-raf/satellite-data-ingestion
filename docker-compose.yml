@@ -6,7 +6,7 @@ services:
     container_name: sdi
     build: .
     restart: ${RESTART_POLICY}
-    command: python main.py
+    command: python -W ignore main.py
     environment:
       - STATE_DIR=/usr/src/app/state
       - OUTPUT_DIR=/usr/src/app/data
