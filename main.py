@@ -23,7 +23,7 @@ def update_source():
 
 if __name__ == '__main__':
     scheduler = BlockingScheduler()
-    scheduler.add_job(update_source, 'interval', minutes=MINUTES_UPDATE_INTERVAL, max_instances=1, )
+    scheduler.add_job(update_source, 'interval', seconds=MINUTES_UPDATE_INTERVAL, max_instances=1)
     print('Press Ctrl+{0} to exit'.format('Break' if os.name == 'nt' else 'C'))
 
     try:

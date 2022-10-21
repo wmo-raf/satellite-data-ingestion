@@ -13,6 +13,7 @@ from utils.fs import atomic_write
 
 import subprocess
 from utils.conversion import process_msg_data, clip_to_extent
+from logger import get_logger
 
 DATASET = {
     "collection": "EO:EUM:DAT:MSG:HRSEVIRI",
@@ -21,6 +22,8 @@ DATASET = {
         "ir108_3d": {"export_bands": [1]}
     }
 }
+
+logger = get_logger(__name__)
 
 
 class MeteosatSource(object):
@@ -45,6 +48,7 @@ class MeteosatSource(object):
         state_file = os.path.join(self.state_directory, file_name)
 
         if not os.path.exists(state_file):
+            logger.debug(f"state file does not existing. creating new at: {state_file}")
             pathlib.Path(state_file).touch(exist_ok=True)
             # write empty dict
             with open(state_file, 'w') as f:
@@ -52,15 +56,20 @@ class MeteosatSource(object):
 
         self.state_file = state_file
 
+        logger.debug(f"state file available at: {state_file}")
+
     def read_state(self):
+        logger.debug(f"reading state file: {self.state_file}")
         try:
             with open(self.state_file, 'r') as f:
                 state = json.load(f)
         except FileNotFoundError:
+            logger.debug(f"state file not found {self.state_file}")
             state = {}
         return state
 
     def update_state(self, new_date):
+        logger.info("updating state after download")
         new_state = {
             "date": new_date.replace(second=0).strftime('%Y-%m-%dT%H:%M:%SZ'),
             "last_updated": datetime.now().isoformat()
@@ -71,21 +80,27 @@ class MeteosatSource(object):
         atomic_write(json_string, self.state_file)
 
     def update(self):
+        logger.info("Starting update process...")
         current_state = self.read_state()
-        date = current_state.get("date")
+        state_date = current_state.get("date")
         collection = DATASET.get("collection")
 
-        if date:
+        if state_date:
             # increment by 15 minutes
-            dt = parse_date(date) + timedelta(minutes=15)
+            data_date = parse_date(state_date) + timedelta(minutes=15)
         else:
             # get current hour
-            dt = datetime.now().replace(minute=0, second=0, microsecond=0)
+            data_date = datetime.utcnow().replace(minute=0, second=0, microsecond=0) - timedelta(minutes=45)
 
-        data_id = self.check_should_update(collection, dt)
+        logger.info(f"Checking if data is available for date {data_date.isoformat()}")
+        data_id = self.check_should_update(collection, data_date)
 
         if data_id:
-            self.download_and_process_data(collection, data_id, dt)
+            logger.info(f"Found data for date {data_date.isoformat()}, with id {data_id}")
+            return self.download_and_process_data(collection, data_id, data_date)
+        else:
+            logger.info(f"Data for date {data_date.isoformat()} not found. Skipping..")
+            return
 
     def check_should_update(self, collection, dt):
         start_dt = dt - timedelta(minutes=30)
@@ -112,22 +127,26 @@ class MeteosatSource(object):
         file_name_zip = os.path.join(temp_dir, data_id + ".zip")
 
         try:
-            print("Started Downloading...")
+            logger.info(f"Started downloading data: {data_id} for date {dt.isoformat()}")
             with self.api.open(collection, data_id) as f_src, open(file_name_zip, mode='wb') as f_dst:
                 shutil.copyfileobj(f_src, f_dst)
+                f_dst.close()
 
-            with zipfile.ZipFile(file_name_zip, "r") as zf:
-                zf.extractall(temp_dir)
+            logger.debug(f"Download complete. Extracting zip file {file_name_zip}")
+
+            zf = zipfile.ZipFile(file_name_zip, "r")
+            zf.extractall(temp_dir)
+            zf.close()
 
             # delete zip file
             os.unlink(file_name_zip)
 
             file_name = os.path.join(temp_dir, data_id + ".nat")
-            print("Done Downloading...")
+            logger.info("Done Downloading...")
 
             composite_ids = list(self.composites.keys())
 
-            print("Starting processing")
+            logger.info("Starting processing")
             process_msg_data(data_file=file_name, composite_ids=composite_ids, base_dir=temp_dir)
 
             for layer in composite_ids:
@@ -145,6 +164,7 @@ class MeteosatSource(object):
 
                 temp_outfile = os.path.join(temp_out_file_dir, temp_out_file_name)
 
+                logger.info("Clipping to extents")
                 clip_to_extent(self.extent, infile, temp_outfile)
 
                 out_file_dir = os.path.join(self.output_dir, layer)
@@ -152,6 +172,7 @@ class MeteosatSource(object):
 
                 export_bands = self.composites.get(layer, {}).get("export_bands")
 
+                logger.info("Exporting individual bands")
                 if export_bands:
                     for band in export_bands:
                         out_file_name = f"band{band}_{layer}_{date_str}.tif"
@@ -159,16 +180,14 @@ class MeteosatSource(object):
                         args = ["gdal_translate", "-b", f"{band}", temp_outfile, outfile]
                         subprocess.call(args)
 
+            logger.info("Updating state")
+            self.update_state(dt)
+
+            logger.debug("Cleaning up")
             # cleanup tempdir
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-            self.update_state(dt)
-
         except Exception as e:
-            # shutil.rmtree(temp_dir, ignore_errors=True)
+            logger.error(e)
+            shutil.rmtree(temp_dir, ignore_errors=True)
             raise e
-
-    @staticmethod
-    def get_default_start_date():
-        dt = datetime(2022, 10, 18)
-        return dt
