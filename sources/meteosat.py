@@ -96,10 +96,10 @@ class MeteosatSource(object):
         data_id = self.check_should_update(collection, data_date)
 
         if data_id:
-            logger.info(f"Found data for date {data_date.isoformat()}, with id {data_id}")
+            logger.info(f"Found data for date: {data_date.isoformat()}. Data ID: {data_id}")
             return self.download_and_process_data(collection, data_id, data_date)
         else:
-            logger.info(f"Data for date {data_date.isoformat()} not found. Skipping..")
+            logger.info(f"Data for date: {data_date.isoformat()} not found. Skipping..")
             return
 
     def check_should_update(self, collection, dt):
@@ -127,7 +127,7 @@ class MeteosatSource(object):
         file_name_zip = os.path.join(temp_dir, data_id + ".zip")
 
         try:
-            logger.info(f"Started downloading data: {data_id} for date {dt.isoformat()}")
+            logger.info(f"Started downloading data: {data_id}")
             with self.api.open(collection, data_id) as f_src, open(file_name_zip, mode='wb') as f_dst:
                 shutil.copyfileobj(f_src, f_dst)
                 f_dst.close()
@@ -165,7 +165,11 @@ class MeteosatSource(object):
                 temp_outfile = os.path.join(temp_out_file_dir, temp_out_file_name)
 
                 logger.info("Clipping to extents")
-                clip_to_extent(self.extent, infile, temp_outfile)
+                try:
+                    clip_to_extent(self.extent, infile, temp_outfile)
+                except Exception as e:
+                    logger.error(f"Error in clipping Clipping {e}")
+                    raise e
 
                 out_file_dir = os.path.join(self.output_dir, layer)
                 pathlib.Path(out_file_dir).mkdir(parents=True, exist_ok=True)
