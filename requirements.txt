@@ -15,7 +15,7 @@ donfig==0.7.0
 entrypoints==0.4
 eumdac==2.0.0
 fasteners==0.18
-fsspec==2022.8.2
+fsspec==2026.6.0
 idna==3.4
 importlib-metadata==5.0.0
 iso8601==1.1.0
